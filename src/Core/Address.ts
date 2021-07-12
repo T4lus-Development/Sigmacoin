@@ -1,6 +1,6 @@
-import * as ecdsa from 'elliptic';
+import * as elliptic from 'elliptic';
 
-const ec = new ecdsa.ec('secp256k1');
+const ec = new elliptic.eddsa('ed25519');
 
 export default class Address {
     

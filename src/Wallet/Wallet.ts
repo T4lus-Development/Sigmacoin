@@ -1,4 +1,4 @@
-import * as ecdsa from 'elliptic';
+import * as elliptic from 'elliptic';
 import {existsSync, readFileSync, unlinkSync, writeFileSync} from 'fs';
 import * as _ from 'lodash';
 
@@ -7,7 +7,7 @@ import * as Config from '../Config';
 import Address from '../Core/Address';
 import {Transaction, TransactionType, TxIn, TxOut, UnspentTxOut} from '../Core/Transaction';
 
-const ec = new ecdsa.ec('secp256k1');
+const ec = new elliptic.eddsa('ed25519');
 
 export default class Wallet {
     private static instance: Wallet;

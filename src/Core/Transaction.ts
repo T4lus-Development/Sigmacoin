@@ -1,12 +1,12 @@
 import * as CryptoJS from 'crypto-js';
-import * as ecdsa from 'elliptic';
+import * as elliptic from 'elliptic';
 import * as _ from 'lodash';
 
 import * as Config from '../Config';
 import Utils from '../Utils';
 import Address from './Address';
 
-const ec = new ecdsa.ec('secp256k1');
+const ec = new elliptic.eddsa('ed25519');
 
 class UnspentTxOut {
     public readonly txOutId: string;
