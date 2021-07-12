@@ -60,7 +60,12 @@ export default class HttpServer {
             res.send(BlockChain.getInstance().getBlockchain());
         });
 
-        app.get('/blockchain/block/:hash', (req, res) => {
+        app.get('/blockchain/block/:index', (req, res) => {
+            const block = _.find(BlockChain.getInstance().getBlockchain(), {'index' : req.params.index});
+            res.send(block);
+        });
+
+        app.get('/blockchain/block/:hash([a-zA-Z0-9]{64})', (req, res) => {
             const block = _.find(BlockChain.getInstance().getBlockchain(), {'hash' : req.params.hash});
             res.send(block);
         });
@@ -97,12 +102,8 @@ export default class HttpServer {
             res.send(BlockChain.getInstance().getMyUnspentTransactionOutputs());
         });
 
-        app.post('/mineRawBlock', (req, res) => {
-            if (req.body.data == null) {
-                res.send('data parameter is missing');
-                return;
-            }
-            const newBlock: Block = BlockChain.getInstance().generateRawNextBlock(req.body.data);
+        app.post('/miner/mine', (req, res) => {
+            const newBlock: Block = BlockChain.getInstance().generateNextBlock();
             if (newBlock === null) {
                 res.status(400).send('could not generate block');
             } else {
@@ -110,8 +111,12 @@ export default class HttpServer {
             }
         });
 
-        app.post('/mineBlock', (req, res) => {
-            const newBlock: Block = BlockChain.getInstance().generateNextBlock();
+        app.post('/miner/mineRawBlock', (req, res) => {
+            if (req.body.data == null) {
+                res.send('data parameter is missing');
+                return;
+            }
+            const newBlock: Block = BlockChain.getInstance().generateRawNextBlock(req.body.data);
             if (newBlock === null) {
                 res.status(400).send('could not generate block');
             } else {
@@ -161,10 +166,10 @@ export default class HttpServer {
             res.send(TransactionPool.getInstance().getPool());
         });
 
-        app.get('/peers', (req, res) => {
+        app.get('/node/peers', (req, res) => {
             res.send(P2pServer.getInstance().getSockets().map((s: any) => s._socket.remoteAddress + ':' + s._socket.remotePort));
         });
-        app.post('/addPeer', (req, res) => {
+        app.post('/node/peers', (req, res) => {
             P2pServer.getInstance().connectToPeers(req.body.peer);
             res.send();
         });
