@@ -3,7 +3,7 @@ import * as elliptic from 'elliptic';
 import * as _ from 'lodash';
 
 import * as Config from '../Config';
-import Utils from '../Utils';
+import * as Utils from '../Utils';
 import Address from './Address';
 
 const ec = new elliptic.eddsa('ed25519');
