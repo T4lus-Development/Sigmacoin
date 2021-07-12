@@ -48,3 +48,10 @@ It's the starting point to interact with Sigmacoin, and every node provides a sw
 |Status|Method|URL|Description|
 |------|------|---|-----------|
 |:heavy_check_mark:|POST|/miner/mine|Mine a new block|
+
+
+##### Swagger
+
+|Status|Method|URL|Description|
+|------|------|---|-----------|
+|:heavy_check_mark:|GET|/api|swagger interface|
