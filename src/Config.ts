@@ -2,6 +2,8 @@
 import Block from './Core/Block';
 import { Transaction, TransactionType, TxIn, TxOut } from './Core/Transaction';
 
+const SALT: string =                                        '0ffaa74d206930aaece253f090c88dbe6685b9e66ec49ad988d84fd7dff230d1';
+
 const PORT_HTTP: number =                                   3001;
 const PORT_P2P: number =                                    6001;
 
@@ -36,6 +38,8 @@ const DEFAULT_PEERS: string[] = [
 ];
 
 export {
+    SALT,
+
     PORT_HTTP,
     PORT_P2P,
 

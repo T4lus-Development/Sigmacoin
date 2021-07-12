@@ -3,7 +3,7 @@ import * as WebSocket from 'ws';
 import {Server} from 'ws';
 
 import * as Config from '../Config';
-import Utils from '../Utils';
+import * as Utils from '../Utils';
 import Block from '../Core/Block';
 import { Transaction } from '../Core/Transaction';
 import BlockChain from '../Core/BlockChain';
