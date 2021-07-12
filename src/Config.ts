@@ -28,7 +28,8 @@ const genesisBlock: Block = new Block(
     0
 );
 
-const PRIVATE_KEY_LOCATION: string =                        process.env.PRIVATE_KEY || 'node/wallets/private_key';
+const PRIVATE_KEY_LOCATION: string =                        'node/wallets/private_key';
+const CHAIN_LOCATION: string =                              'node/chain/';
 
 const DEFAULT_PEERS: string[] = [
 
@@ -47,6 +48,7 @@ export {
     genesisBlock,
 
     PRIVATE_KEY_LOCATION,
+    CHAIN_LOCATION,
 
     DEFAULT_PEERS
 }

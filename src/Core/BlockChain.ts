@@ -1,4 +1,4 @@
-
+import {existsSync, readFileSync, unlinkSync, writeFileSync} from 'fs';
 import * as CryptoJS from 'crypto-js';
 import * as _ from 'lodash';
 
@@ -16,13 +16,11 @@ import P2pServer from '../P2P/P2pServer';
 export default class BlockChain {
     private static instance: BlockChain;
 
-    private chain: Block[];
-
-    private unspentTxOuts: UnspentTxOut[];
+    private chain: Block[] = [];
+    private unspentTxOuts: UnspentTxOut[] = [];
 
     private constructor() {
-        this.chain = [Config.genesisBlock];
-        this.unspentTxOuts = Transaction.processTransactions(this.chain[0].data, [], 0); // the unspent txOut of genesis block is set to unspentTxOuts on startup
+        this.loadChain();
     }
 
     public static getInstance(): BlockChain {
@@ -231,7 +229,7 @@ export default class BlockChain {
     };
 
     public addBlockToChain = (newBlock: Block): boolean => {
-        if (this.isValidNewBlock(newBlock, this.getLatestBlock())) {
+        if (newBlock == Config.genesisBlock || this.isValidNewBlock(newBlock, this.getLatestBlock())) {
             const retVal: UnspentTxOut[] = Transaction.processTransactions(newBlock.data, this.getUnspentTxOuts(), newBlock.index);
             if (retVal === null) {
                 console.log('block is not valid in terms of transactions');
@@ -240,6 +238,10 @@ export default class BlockChain {
                 this.chain.push(newBlock);
                 this.setUnspentTxOuts(retVal);
                 TransactionPool.getInstance().updatePool(this.unspentTxOuts);
+
+                writeFileSync(Config.CHAIN_LOCATION + newBlock.index + '.block', JSON.stringify(newBlock));
+                writeFileSync(Config.CHAIN_LOCATION + 'chain.idx', newBlock.index.toString());
+
                 return true;
             }
         }
@@ -255,6 +257,7 @@ export default class BlockChain {
             this.setUnspentTxOuts(aUnspentTxOuts);
             TransactionPool.getInstance().updatePool(this.unspentTxOuts);
             P2pServer.getInstance().broadcastLatest();
+            this.saveChain();
         } else {
             console.log('Received blockchain invalid');
         }
@@ -263,5 +266,31 @@ export default class BlockChain {
     public handleReceivedTransaction = (transaction: Transaction) => {
         TransactionPool.getInstance().addToPool(transaction, this.getUnspentTxOuts());
     };
+
+    public loadChain = () => {
+        if (!existsSync(Config.CHAIN_LOCATION + 'chain.idx')) {
+            this.chain = [Config.genesisBlock];
+            this.unspentTxOuts = Transaction.processTransactions(this.chain[0].data, [], 0); // the unspent txOut of genesis block is set to unspentTxOuts on startup
+
+            writeFileSync(Config.CHAIN_LOCATION + '0.block', JSON.stringify(Config.genesisBlock));
+            writeFileSync(Config.CHAIN_LOCATION + 'chain.idx', '0');
+            return;
+        }
+
+        const blockIndex = Number.parseInt(readFileSync(Config.CHAIN_LOCATION + 'chain.idx', 'utf8').toString());
+        for (let i = 0; i <= blockIndex; i++)
+        {
+            this.chain.push(
+                Utils.JSONToObject<Block>(readFileSync(Config.CHAIN_LOCATION + i + '.block', 'utf8').toString())
+            );
+        }
+    }
+
+    public saveChain = () => {
+        writeFileSync(Config.CHAIN_LOCATION + 'chain.idx', this.chain.length.toString());            
+        this.chain.forEach((block) => {
+            writeFileSync(Config.CHAIN_LOCATION + block.index + '.block', JSON.stringify(block));
+        }); 
+    }
 
 }
