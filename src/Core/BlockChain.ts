@@ -23,7 +23,7 @@ export default class BlockChain {
         this.loadChain();
     }
 
-    public static getInstance(): BlockChain {
+    public static getInstance = (): BlockChain => {
         if (!BlockChain.instance) {
             BlockChain.instance = new BlockChain();
         }

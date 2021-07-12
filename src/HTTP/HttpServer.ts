@@ -193,7 +193,7 @@ export default class HttpServer {
         });
     }
 
-    public static getInstance(): HttpServer {
+    public static getInstance = (): HttpServer => {
         if (!HttpServer.instance) {
             HttpServer.instance = new HttpServer();
         }

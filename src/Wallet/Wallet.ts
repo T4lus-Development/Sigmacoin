@@ -24,7 +24,7 @@ export default class Wallet {
         console.log('new wallet with private key created to : %s', Config.PRIVATE_KEY_LOCATION);
     }
 
-    public static getInstance(): Wallet {
+    public static getInstance = (): Wallet => {
         if (!Wallet.instance) {
             Wallet.instance = new Wallet();
         }

@@ -26,7 +26,7 @@ export default class P2pServer {
         console.log('listening websocket p2p port on: ' + Config.PORT_P2P);
     }
 
-    public static getInstance(): P2pServer {
+    public static getInstance = (): P2pServer => {
         if (!P2pServer.instance) {
             P2pServer.instance = new P2pServer();
         }

@@ -6,7 +6,7 @@ export default class TransactionPool {
 
     private transactionPool: Transaction[] = [];
 
-    public static getInstance(): TransactionPool {
+    public static getInstance = (): TransactionPool => {
         if (!TransactionPool.instance) {
             TransactionPool.instance = new TransactionPool();
         }
