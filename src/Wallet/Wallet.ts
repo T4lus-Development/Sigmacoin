@@ -1,6 +1,6 @@
 import * as elliptic from 'elliptic';
 import {existsSync, readFileSync, unlinkSync, writeFileSync} from 'fs';
-import * as _ from 'lodash';
+import * as R from 'ramda';
 
 import * as Config from '../Config';
 
@@ -55,13 +55,13 @@ export default class Wallet {
     };
     
     public getBalance = (address: string, unspentTxOuts: UnspentTxOut[]): number => {
-        return _(this.findUnspentTxOuts(address, unspentTxOuts))
+        return R(this.findUnspentTxOuts(address, unspentTxOuts))
             .map((uTxO: UnspentTxOut) => uTxO.amount)
             .sum();
     };
     
     public findUnspentTxOuts = (ownerAddress: string, unspentTxOuts: UnspentTxOut[]) => {
-        return _.filter(unspentTxOuts, (uTxO: UnspentTxOut) => uTxO.address === ownerAddress);
+        return R.filter(unspentTxOuts, (uTxO: UnspentTxOut) => uTxO.address === ownerAddress);
     };
     
     public findTxOutsForAmount = (amount: number, myUnspentTxOuts: UnspentTxOut[]) => {
@@ -91,13 +91,13 @@ export default class Wallet {
     };
     
     public filterTxPoolTxs = (unspentTxOuts: UnspentTxOut[], transactionPool: Transaction[]): UnspentTxOut[] => {
-        const txIns: TxIn[] = _(transactionPool)
+        const txIns: TxIn[] = R(transactionPool)
             .map((tx: Transaction) => tx.txIns)
             .flatten()
             .value();
         const removable: UnspentTxOut[] = [];
         for (const unspentTxOut of unspentTxOuts) {
-            const txIn = _.find(txIns, (aTxIn: TxIn) => {
+            const txIn = R.find(txIns, (aTxIn: TxIn) => {
                 return aTxIn.txOutIndex === unspentTxOut.txOutIndex && aTxIn.txOutId === unspentTxOut.txOutId;
             });
     
@@ -108,7 +108,7 @@ export default class Wallet {
             }
         }
     
-        return _.without(unspentTxOuts, ...removable);
+        return R.without(unspentTxOuts, ...removable);
     };
     
     public createTransaction = (receiverAddress: string, amount: number, privateKey: string, unspentTxOuts: UnspentTxOut[], txPool: Transaction[]): Transaction => {

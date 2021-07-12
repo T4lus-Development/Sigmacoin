@@ -1,7 +1,7 @@
 import * as  bodyParser from 'body-parser';
 import * as express from 'express';
 import * as swaggerUi from 'swagger-ui-express';
-import * as _ from 'lodash';
+import * as R from 'ramda';
 import * as path from 'path';
 
 import * as Config from '../Config';
@@ -68,12 +68,12 @@ export default class HttpServer {
         });
 
         app.get('/blockchain/block/:index', (req, res) => {
-            const block = _.find(BlockChain.getInstance().getBlockchain(), {'index' : req.params.index});
+            const block = R.find(BlockChain.getInstance().getBlockchain(), {'index' : req.params.index});
             res.send(block);
         });
 
         app.get('/blockchain/block/:hash([a-zA-Z0-9]{64})', (req, res) => {
-            const block = _.find(BlockChain.getInstance().getBlockchain(), {'hash' : req.params.hash});
+            const block = R.find(BlockChain.getInstance().getBlockchain(), {'hash' : req.params.hash});
             res.send(block);
         });
 
@@ -104,7 +104,7 @@ export default class HttpServer {
         });
 
         app.get('/blockchain/transactions/:id([a-zA-Z0-9]{64})', (req, res) => {
-            const tx = _(BlockChain.getInstance().getBlockchain())
+            const tx = R(BlockChain.getInstance().getBlockchain())
                 .map((blocks) => blocks.data)
                 .flatten()
                 .find({'id': req.params.id});
@@ -117,7 +117,7 @@ export default class HttpServer {
 
         app.get('/address/:address', (req, res) => {
             const unspentTxOuts: UnspentTxOut[] =
-                _.filter(BlockChain.getInstance().getUnspentTxOuts(), (uTxO) => uTxO.address === req.params.address);
+                R.filter(BlockChain.getInstance().getUnspentTxOuts(), (uTxO) => uTxO.address === req.params.address);
             res.send({'unspentTxOuts': unspentTxOuts});
         });
 

@@ -1,4 +1,4 @@
-import * as _ from 'lodash';
+import * as R from 'ramda';
 import {Transaction, TxIn, UnspentTxOut} from './Transaction';
 
 export default class TransactionPool {
@@ -14,7 +14,7 @@ export default class TransactionPool {
     }
 
     public getPool = () => {
-        return _.cloneDeep(this.transactionPool);
+        return R.clone(this.transactionPool);
     };
 
     public addToPool = (tx: Transaction, unspentTxOuts: UnspentTxOut[]) => {
@@ -42,7 +42,7 @@ export default class TransactionPool {
         }
         if (invalidTxs.length > 0) {
             console.log('removing the following transactions from txPool: %s', JSON.stringify(invalidTxs));
-            this.transactionPool = _.without(this.transactionPool, ...invalidTxs);
+            this.transactionPool = R.without(this.transactionPool, ...invalidTxs);
         }
     };
 
@@ -54,7 +54,7 @@ export default class TransactionPool {
     };
 
     private getTxPoolIns = (): TxIn[] => {
-        return _(this.transactionPool)
+        return R(this.transactionPool)
             .map((tx) => tx.txIns)
             .flatten()
             .value();
@@ -64,7 +64,7 @@ export default class TransactionPool {
         const txPoolIns: TxIn[] = this.getTxPoolIns();
     
         const containsTxIn = (txIns: TxIn[], txIn: TxIn) => {
-            return _.find(txPoolIns, ((txPoolIn) => {
+            return R.find(txPoolIns, ((txPoolIn) => {
                 return txIn.txOutIndex === txPoolIn.txOutIndex && txIn.txOutId === txPoolIn.txOutId;
             }));
         };

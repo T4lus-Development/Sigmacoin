@@ -1,6 +1,6 @@
 import * as CryptoJS from 'crypto-js';
 import * as elliptic from 'elliptic';
-import * as _ from 'lodash';
+import * as R from 'ramda';
 
 import * as Config from '../Config';
 import * as Utils from '../Utils';
@@ -117,7 +117,7 @@ class Transaction {
         }
     
         // check for duplicate txIns. Each txIn can be included only once
-        const txIns: TxIn[] = _(aTransactions)
+        const txIns: TxIn[] = R(aTransactions)
             .map((tx) => tx.txIns)
             .flatten()
             .value();
@@ -134,8 +134,8 @@ class Transaction {
     };
 
     static hasDuplicates = (txIns: TxIn[]): boolean => {
-        const groups = _.countBy(txIns, (txIn: TxIn) => txIn.txOutId + txIn.txOutIndex);
-        return _(groups)
+        const groups = R.countBy(txIns, (txIn: TxIn) => txIn.txOutId + txIn.txOutIndex);
+        return R(groups)
             .map((value, key) => {
                 if (value > 1) {
                     console.log('duplicate txIn: ' + key);

@@ -1,6 +1,6 @@
 import {existsSync, readFileSync, unlinkSync, writeFileSync} from 'fs';
 import * as CryptoJS from 'crypto-js';
-import * as _ from 'lodash';
+import * as R from 'ramda';
 
 import * as Config from '../Config';
 import * as Utils from '../Utils';
@@ -32,7 +32,7 @@ export default class BlockChain {
 
     public getBlockchain = (): Block[] => this.chain;
 
-    public getUnspentTxOuts = (): UnspentTxOut[] => _.cloneDeep(this.unspentTxOuts);
+    public getUnspentTxOuts = (): UnspentTxOut[] => R.clone(this.unspentTxOuts);
 
     // and txPool should be only updated at the same time
     public setUnspentTxOuts = (newUnspentTxOut: UnspentTxOut[]) => {
