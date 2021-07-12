@@ -112,32 +112,6 @@
                         "description": "Not found"
                     }
                 }
-            },
-            "put": {
-                "tags": [
-                    "blockchain"
-                ],
-                "summary": "Update the latest block",
-                "description": "",
-                "parameters": [
-                    {
-                        "in": "body",
-                        "name": "body",
-                        "description": "Block to be evaluated",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/Block"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK"
-                    },
-                    "409": {
-                        "description": "Conflict"
-                    }
-                }
             }
         },
         "/blockchain/blocks/transactions/{transactionId}": {

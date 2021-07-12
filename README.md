@@ -17,12 +17,11 @@ It's the starting point to interact with Sigmacoin, and every node provides a sw
 |:heavy_check_mark:|GET|/blockchain/blocks|Get all blocks|
 |:heavy_check_mark:|GET|/blockchain/blocks/{index}|Get block by index|
 |:heavy_check_mark:|GET|/blockchain/blocks/{hash}|Get block by hash|
-||GET|/blockchain/blocks/latest|Get the latest block|
-||PUT|/blockchain/blocks/latest|Update the latest block|
-||GET|/blockchain/blocks/transactions/{transactionId}|Get a transaction from some block|
-||GET|/blockchain/transactions|Get unconfirmed transactions|
-||POST|/blockchain/transactions|Create a transaction|
-||GET|/blockchain/transactions/unspent|Get unspent transactions|
+|:heavy_check_mark:|GET|/blockchain/blocks/latest|Get the latest block|
+|:heavy_check_mark:|GET|/blockchain/transactions/{id}|Get a transaction from some block|
+|:heavy_check_mark:|GET|/blockchain/transactions|Get unconfirmed transactions|
+|:heavy_check_mark:|POST|/blockchain/transactions|Create a transaction|
+|:heavy_check_mark:|GET|/blockchain/transactions/unspent|Get unspent transactions|
 
 ##### Operator
 
