@@ -117,10 +117,11 @@ class Transaction {
         }
     
         // check for duplicate txIns. Each txIn can be included only once
-        const txIns: TxIn[] = R(aTransactions)
-            .map((tx) => tx.txIns)
-            .flatten()
-            .value();
+        const txIns: TxIn[] = R.pipe(
+            R.map((tx) => tx.txIns),
+            R.flatten(),
+            R.values()
+        )(aTransactions);
     
         if (Transaction.hasDuplicates(txIns)) {
             return false;
@@ -128,23 +129,23 @@ class Transaction {
     
         // all but coinbase transactions
         const normalTransactions: Transaction[] = aTransactions.slice(1);
-        return normalTransactions.map((tx) => Transaction.validateTransaction(tx, aUnspentTxOuts))
-            .reduce((a, b) => (a && b), true);
+        return normalTransactions.map((tx) => Transaction.validateTransaction(tx, aUnspentTxOuts)).reduce((a, b) => (a && b), true);
     
     };
 
     static hasDuplicates = (txIns: TxIn[]): boolean => {
-        const groups = R.countBy(txIns, (txIn: TxIn) => txIn.txOutId + txIn.txOutIndex);
-        return R(groups)
-            .map((value, key) => {
+        const groups = R.countBy((txIn: TxIn) => txIn.txOutId + txIn.txOutIndex)(txIns);
+        return R.pipe(
+            R.map((value, key) => {
                 if (value > 1) {
                     console.log('duplicate txIn: ' + key);
                     return true;
                 } else {
                     return false;
                 }
-            })
-            .includes(true);
+            }),
+            R.includes(true)
+        )(groups);
     };
 
     static validateCoinbaseTx = (transaction: Transaction, blockIndex: number): boolean => {

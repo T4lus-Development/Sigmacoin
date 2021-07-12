@@ -67,13 +67,13 @@ export default class HttpServer {
             res.status(200).send(lastBlock);
         });
 
-        app.get('/blockchain/block/:index', (req, res) => {
-            const block = R.find(BlockChain.getInstance().getBlockchain(), {'index' : req.params.index});
+        app.get('/blockchain/blocks/:hash([a-zA-Z0-9]{64})', (req, res) => {
+            const block = R.find(R.propEq('hash', req.params.hash), BlockChain.getInstance().getBlockchain());
             res.send(block);
         });
 
-        app.get('/blockchain/block/:hash([a-zA-Z0-9]{64})', (req, res) => {
-            const block = R.find(BlockChain.getInstance().getBlockchain(), {'hash' : req.params.hash});
+        app.get('/blockchain/blocks/:index', (req, res) => {
+            const block = R.find(R.propEq('index', Number.parseInt(req.params.index)), BlockChain.getInstance().getBlockchain());
             res.send(block);
         });
 
