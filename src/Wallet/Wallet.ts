@@ -7,7 +7,7 @@ import * as Config from '../Config';
 import Address from '../Core/Address';
 import {Transaction, TransactionType, TxIn, TxOut, UnspentTxOut} from '../Core/Transaction';
 
-const ec = new elliptic.eddsa('ed25519');
+const ec = new elliptic.ec('secp256k1');
 
 export default class Wallet {
     private static instance: Wallet;
@@ -55,13 +55,14 @@ export default class Wallet {
     };
     
     public getBalance = (address: string, unspentTxOuts: UnspentTxOut[]): number => {
-        return R(this.findUnspentTxOuts(address, unspentTxOuts))
-            .map((uTxO: UnspentTxOut) => uTxO.amount)
-            .sum();
+        return R.pipe(
+            R.map((uTxO: UnspentTxOut) => uTxO.amount),
+            R.sum()
+        )(this.findUnspentTxOuts(address, unspentTxOuts));
     };
     
-    public findUnspentTxOuts = (ownerAddress: string, unspentTxOuts: UnspentTxOut[]) => {
-        return R.filter(unspentTxOuts, (uTxO: UnspentTxOut) => uTxO.address === ownerAddress);
+    public findUnspentTxOuts = (ownerAddress: string, unspentTxOuts: UnspentTxOut[]): UnspentTxOut[] => {
+        return R.filter((uTxO: UnspentTxOut) => uTxO.address === ownerAddress)(unspentTxOuts);
     };
     
     public findTxOutsForAmount = (amount: number, myUnspentTxOuts: UnspentTxOut[]) => {
@@ -91,10 +92,10 @@ export default class Wallet {
     };
     
     public filterTxPoolTxs = (unspentTxOuts: UnspentTxOut[], transactionPool: Transaction[]): UnspentTxOut[] => {
-        const txIns: TxIn[] = R(transactionPool)
-            .map((tx: Transaction) => tx.txIns)
-            .flatten()
-            .value();
+        const txIns: TxIn[] = R.pipe(
+            R.map((tx: Transaction) => tx.txIns),
+            R.flatten(),
+            R.values())(transactionPool);
         const removable: UnspentTxOut[] = [];
         for (const unspentTxOut of unspentTxOuts) {
             const txIn = R.find(txIns, (aTxIn: TxIn) => {
@@ -133,7 +134,7 @@ export default class Wallet {
         tx.txIns = unsignedTxIns;
         tx.txOuts = this.createTxOuts(receiverAddress, myAddress, amount, leftOverAmount);
         tx.id = Transaction.getTransactionId(tx);
-        tx.type = TransactionType.NORMAL;
+        tx.type = TransactionType.REGULAR;
     
         tx.txIns = tx.txIns.map((txIn: TxIn, index: number) => {
             txIn.signature = Transaction.signTxIn(tx, index, privateKey, unspentTxOuts);

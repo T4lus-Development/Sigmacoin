@@ -1,3 +1,5 @@
+import * as Utils from '../Utils';
+
 import { Transaction } from "./Transaction";
 
 export default class Block {
@@ -18,5 +20,15 @@ export default class Block {
         this.hash = hash;
         this.difficulty = difficulty;
         this.nonce = nonce;
+    }
+
+    public toHash = () => {
+        // INFO: There are different implementations of the hash algorithm, for example: https://en.bitcoin.it/wiki/Hashcash
+        return Utils.Crypto.hash(this.index + this.previousHash + this.timestamp + JSON.stringify(this.data) + this.nonce);
+    }
+
+    public getDifficulty = () => {
+        // 14 is the maximum precision length supported by javascript
+        return parseInt(this.hash.substring(0, 14), 16);
     }
 }

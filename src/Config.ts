@@ -11,7 +11,13 @@ const BLOCK_GENERATION_INTERVAL: number =                   60;                 
 const DIFFICULTY_ADJUSTMENT_INTERVAL: number =              12;                                             // in blocks
 const EXPECTED_NUMBER_OF_BLOCKS_PER_DAY: number =           24 * 60 * 60 / BLOCK_GENERATION_INTERVAL;
 
+// Proof-of-work difficulty settings
+const BASE_DIFFICULTY = Number.MAX_SAFE_INTEGER;
+const EVERY_X_BLOCKS = 5;
+const POW_CURVE = 5;
+
 const BLOCK_REWARD: number =                                50;
+const FEE_PER_TRANSACTION: number =                         0.5;
 
 const genesisBlock: Block = new Block(
     0, 
@@ -47,7 +53,12 @@ export {
     DIFFICULTY_ADJUSTMENT_INTERVAL,
     EXPECTED_NUMBER_OF_BLOCKS_PER_DAY,
 
+    BASE_DIFFICULTY,
+    EVERY_X_BLOCKS,
+    POW_CURVE,
+
     BLOCK_REWARD,
+    FEE_PER_TRANSACTION,
 
     genesisBlock,
 

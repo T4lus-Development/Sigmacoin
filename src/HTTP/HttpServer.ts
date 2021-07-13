@@ -4,12 +4,17 @@ import * as swaggerUi from 'swagger-ui-express';
 import * as R from 'ramda';
 import * as path from 'path';
 
+import * as Exceptions from '../Exceptions';
+
 import * as Config from '../Config';
+import * as Utils from '../Utils';
 
 import BlockChain from '../Core/BlockChain';
 import TransactionPool from '../Core/TransactionPool';
 import Block from '../Core/Block';
-import {UnspentTxOut} from '../Core/Transaction';
+import {Transaction, UnspentTxOut} from '../Core/Transaction';
+
+import Operator from '../Operator/Operator';
 
 import Wallet from '../Wallet/Wallet';
 import P2pServer from '../P2P/P2pServer';
@@ -50,30 +55,30 @@ export default class HttpServer {
             if (req.headers['accept'] && req.headers['accept'].includes('text/html'))
                 res.render('blockchain/index.pug', {
                     pageTitle: 'Blockchain',
-                    blocks: BlockChain.getInstance().getBlockchain()
+                    blocks: BlockChain.getInstance().getAllBlocks()
                 });
             else
                 res.status(400).send();
         });
 
         app.get('/blockchain/blocks', (req, res) => {
-            res.send(BlockChain.getInstance().getBlockchain());
+            res.send(BlockChain.getInstance().getAllBlocks());
         });
 
         app.get('/blockchain/blocks/latest', (req, res) => {
-            let lastBlock = BlockChain.getInstance().getLatestBlock();
+            let lastBlock = BlockChain.getInstance().getLastBlock();
             if (lastBlock == null)
                 res.status(404).send('Last block not found');
             res.status(200).send(lastBlock);
         });
 
         app.get('/blockchain/blocks/:hash([a-zA-Z0-9]{64})', (req, res) => {
-            const block = R.find(R.propEq('hash', req.params.hash), BlockChain.getInstance().getBlockchain());
+            const block = R.find(R.propEq('hash', req.params.hash))( BlockChain.getInstance().getAllBlocks());
             res.send(block);
         });
 
         app.get('/blockchain/blocks/:index', (req, res) => {
-            const block = R.find(R.propEq('index', Number.parseInt(req.params.index)), BlockChain.getInstance().getBlockchain());
+            const block = R.find(R.propEq('index', Number.parseInt(req.params.index)))( BlockChain.getInstance().getAllBlocks());
             res.send(block);
         });
 
@@ -104,7 +109,7 @@ export default class HttpServer {
         });
 
         app.get('/blockchain/transactions/:id([a-zA-Z0-9]{64})', (req, res) => {
-            const tx = R(BlockChain.getInstance().getBlockchain())
+            const tx = R(BlockChain.getInstance().getAllBlocks())
                 .map((blocks) => blocks.data)
                 .flatten()
                 .find({'id': req.params.id});
@@ -113,16 +118,6 @@ export default class HttpServer {
 
         app.get('/blockchain/transactions/unspent', (req, res) => {
             res.send(BlockChain.getInstance().getUnspentTxOuts());
-        });
-
-        app.get('/address/:address', (req, res) => {
-            const unspentTxOuts: UnspentTxOut[] =
-                R.filter(BlockChain.getInstance().getUnspentTxOuts(), (uTxO) => uTxO.address === req.params.address);
-            res.send({'unspentTxOuts': unspentTxOuts});
-        });
-
-        app.get('/myUnspentTransactionOutputs', (req, res) => {
-            res.send(BlockChain.getInstance().getMyUnspentTransactionOutputs());
         });
 
         app.post('/miner/mine', (req, res) => {
@@ -146,6 +141,60 @@ export default class HttpServer {
                 res.send(newBlock);
             }
         });
+
+        app.get('/node/peers', (req, res) => {
+            res.send(P2pServer.getInstance().getSockets().map((s: any) => s._socket.remoteAddress + ':' + s._socket.remotePort));
+        });
+
+        app.post('/node/peers', (req, res) => {
+            P2pServer.getInstance().connectToPeers(req.body.peer);
+            res.send();
+        });
+
+        app.post('/node/stop', (req, res) => {
+            res.send({'msg' : 'stopping server'});
+            process.exit();
+        });
+
+        app.post('/operator/wallets/:walletId/transactions', (req, res) => {
+            let walletId = req.params.walletId;
+            let password = req.headers.password;
+
+            if (password == null) 
+                throw new Exceptions.HTTPError(401, 'Wallet\'s password is missing.');
+            let passwordHash = Utils.Crypto.hash(password);
+
+            try {
+                if (!Operator.getInstance().checkWalletPassword(walletId, passwordHash)) 
+                    throw new Exceptions.HTTPError(403, `Invalid password for wallet '${walletId}'`);
+
+                let newTransaction = Operator.getInstance().createTransaction(walletId, req.body.fromAddress, req.body.toAddress, req.body.amount, req.body['changeAddress'] || req.body.fromAddress);
+
+                newTransaction.check();
+                
+                let transactionCreated = BlockChain.getInstance().addTransaction(newTransaction);
+                res.status(201).send(transactionCreated);
+            } catch (ex) {
+                if (ex instanceof Exceptions.ArgumentError || ex instanceof Exceptions.TransactionAssertionError) 
+                    throw new Exceptions.HTTPError(400, ex.message, walletId, ex);
+                else 
+                    throw ex;
+            }
+        });
+
+//------------------
+
+        app.get('/address/:address', (req, res) => {
+            const unspentTxOuts: UnspentTxOut[] =
+                R.filter(BlockChain.getInstance().getUnspentTxOuts(), (uTxO) => uTxO.address === req.params.address);
+            res.send({'unspentTxOuts': unspentTxOuts});
+        });
+
+        app.get('/myUnspentTransactionOutputs', (req, res) => {
+            res.send(BlockChain.getInstance().getMyUnspentTransactionOutputs());
+        });
+
+        
 
         app.get('/balance', (req, res) => {
             const balance: number = BlockChain.getInstance().getAccountBalance();
@@ -175,18 +224,7 @@ export default class HttpServer {
             res.send(TransactionPool.getInstance().getPool());
         });
 
-        app.get('/node/peers', (req, res) => {
-            res.send(P2pServer.getInstance().getSockets().map((s: any) => s._socket.remoteAddress + ':' + s._socket.remotePort));
-        });
-        app.post('/node/peers', (req, res) => {
-            P2pServer.getInstance().connectToPeers(req.body.peer);
-            res.send();
-        });
 
-        app.post('/stop', (req, res) => {
-            res.send({'msg' : 'stopping server'});
-            process.exit();
-        });
 
         app.listen(Config.PORT_HTTP, () => {
             console.log('Listening http on port: ' + Config.PORT_HTTP);

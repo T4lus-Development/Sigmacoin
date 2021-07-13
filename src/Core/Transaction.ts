@@ -2,9 +2,13 @@ import * as CryptoJS from 'crypto-js';
 import * as elliptic from 'elliptic';
 import * as R from 'ramda';
 
+import * as Exceptions from '../Exceptions';
+
 import * as Config from '../Config';
 import * as Utils from '../Utils';
+
 import Address from './Address';
+import BlockChain from './BlockChain';
 
 const ec = new elliptic.eddsa('ed25519');
 
@@ -45,13 +49,14 @@ class TxOut {
 }
 
 enum TransactionType {
-    NORMAL = 0,
+    REGULAR = 0,
     FEE = 1,
     REWARD = 2
 }
 
 class Transaction {
     public id: string;
+    public hash: string;
     public type: TransactionType;
     public txIns: TxIn[];
     public txOuts: TxOut[];
@@ -62,6 +67,83 @@ class Transaction {
         this.txIns = txIns;
         this.txOuts = txOuts;
     }
+
+    public toHash = () => {
+        return Utils.Crypto.hash(this.id + this.type + JSON.stringify(this.txIns) + JSON.stringify(this.txOuts));
+    }
+
+    check() {
+        if (this.hash != this.toHash()) {
+            console.error(`Invalid transaction hash '${this.hash}'`);
+            throw new Exceptions.TransactionAssertionError(`Invalid transaction hash '${this.hash}'`, this);
+        }
+
+        // Check if the signature of all input transactions are correct (transaction data is signed by the public key of the address)
+        R.map((txInput) => {
+            let txInputHash = Utils.Crypto.hash({
+                transaction: txInput.transaction,
+                index: txInput.index,
+                address: txInput.address
+            });
+            let isValidSignature = Utils.CryptoEdDSA.verifySignature(txInput.address, txInput.signature, txInputHash);
+
+            if (!isValidSignature) {
+                console.error(`Invalid transaction input signature '${JSON.stringify(txInput)}'`);
+                throw new Exceptions.TransactionAssertionError(`Invalid transaction input signature '${JSON.stringify(txInput)}'`, txInput);
+            }
+        }, this.txIns);
+
+
+        if (this.type == TransactionType.REGULAR) {
+            // Check if the sum of input transactions are greater than output transactions, it needs to leave some room for the transaction fee
+            let sumOfInputsAmount = R.sum(R.map(R.prop('amount'), this.txIns));
+            let sumOfOutputsAmount = R.sum(R.map(R.prop('amount'), this.txOuts));
+            
+            const totalTxInValues: number = this.txIns
+                .map((txIn) => BlockChain.getInstance().getUnspentTxOuts().find((uTxO) => uTxO.txOutId === txIn.txOutId && uTxO.txOutIndex === txIn.txOutIndex).amount)
+                .reduce((a, b) => (a + b), 0);
+    
+            const totalTxOutValues: number = this.txOuts
+                .map((txOut) => txOut.amount)
+                .reduce((a, b) => (a + b), 0);
+
+            let negativeOutputsFound = 0;
+            let i = 0;
+            let outputsLen = this.txOuts.length;
+
+            // Check for negative outputs
+            for (i = 0; i < outputsLen; i++) {
+                if (this.txOuts[i].amount < 0) {
+                    negativeOutputsFound++;
+                }
+            }
+
+            let isInputsAmountGreaterOrEqualThanOutputsAmount = R.gte(sumOfInputsAmount, sumOfOutputsAmount);
+
+            if (!isInputsAmountGreaterOrEqualThanOutputsAmount) {
+                console.error(`Invalid transaction balance: inputs sum '${sumOfInputsAmount}', outputs sum '${sumOfOutputsAmount}'`);
+                throw new Exceptions.TransactionAssertionError(`Invalid transaction balance: inputs sum '${sumOfInputsAmount}', outputs sum '${sumOfOutputsAmount}'`, { sumOfInputsAmount, sumOfOutputsAmount });
+            }
+
+            let isEnoughFee = (sumOfInputsAmount - sumOfOutputsAmount) >= Config.FEE_PER_TRANSACTION; // 1 because the fee is 1 satoshi per transaction
+
+            if (!isEnoughFee) {
+                console.error(`Not enough fee: expected '${Config.FEE_PER_TRANSACTION}' got '${(sumOfInputsAmount - sumOfOutputsAmount)}'`);
+                throw new Exceptions.TransactionAssertionError(`Not enough fee: expected '${Config.FEE_PER_TRANSACTION}' got '${(sumOfInputsAmount - sumOfOutputsAmount)}'`, { sumOfInputsAmount, sumOfOutputsAmount, FEE_PER_TRANSACTION: Config.FEE_PER_TRANSACTION });
+            }
+            if (negativeOutputsFound > 0) {
+                console.error(`Transaction is either empty or negative, output(s) caught: '${negativeOutputsFound}'`);
+                throw new Exceptions.TransactionAssertionError(`Transaction is either empty or negative, output(s) caught: '${negativeOutputsFound}'`);
+            }
+        }
+
+        
+
+        return true;
+    }
+
+
+    //------------------
 
     static getTransactionId = (transaction: Transaction): string => {
         const txInContent: string = transaction.txIns
