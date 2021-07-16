@@ -5,51 +5,60 @@ import * as Exceptions from '../Exceptions';
 import * as Config from '../Config';
 import * as Utils from '../Utils';
 
+import { Transaction, TransactionType } from "../Core/Transaction";
+
+
 export default class TransactionBuilder {
-    
-    private secretKey:string = null;
-    
+    private listOfUTXO;
+    private outputAddress;
+    private totalAmount;
+    private changeAddress;
+    private feeAmount;
+    private secretKey;
+    private transactionType: TransactionType
+
     constructor() {
         this.listOfUTXO = null;
-        this.outputAddresses = null;
+        this.outputAddress = null;
         this.totalAmount = null;
         this.changeAddress = null;
         this.feeAmount = 0;
         this.secretKey = null;
-        this.type = 'regular';
+        this.transactionType = TransactionType.REGULAR;
     }
 
-    public from(listOfUTXO) {
+    public from = (listOfUTXO): TransactionBuilder => {
         this.listOfUTXO = listOfUTXO;
         return this;
     }
 
-    public to(address, amount) {
+    public to = (address, amount): TransactionBuilder => {
         this.outputAddress = address;
         this.totalAmount = amount;
         return this;
     }
 
-    public change(changeAddress) {
+    public change = (changeAddress): TransactionBuilder => {
         this.changeAddress = changeAddress;
         return this;
     }
 
-    public fee(amount) {
+    public fee = (amount): TransactionBuilder => {
         this.feeAmount = amount;
         return this;
     }
 
-    public sign(secretKey) {
+    public sign = (secretKey): TransactionBuilder => {
         this.secretKey = secretKey;
         return this;
     }
 
-    public type(type) {
-        this.type = type;
+    public type = (type): TransactionBuilder => {
+        this.transactionType = type;
+        return this;
     }
 
-    public build() {
+    public build = ():Transaction => {
         // Check required information
         if (this.listOfUTXO == null) throw new Exceptions.ArgumentError('It\'s necessary to inform a list of unspent output transactions.');
         if (this.outputAddress == null) throw new Exceptions.ArgumentError('It\'s necessary to inform the destination address.');
@@ -92,9 +101,9 @@ export default class TransactionBuilder {
         // The remaining value is the fee to be collected by the block's creator.        
 
         return Transaction.fromJson({
-            id: CryptoUtil.randomId(64),
+            id: Utils.Crypto.randomId(64),
             hash: null,
-            type: this.type,
+            type: this.transactionType,
             data: {
                 inputs: inputs,
                 outputs: outputs

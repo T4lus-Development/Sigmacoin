@@ -1,21 +1,14 @@
 
-
-import BlockChain from './Core/BlockChain';
-import TransactionPool from './Core/TransactionPool';
+import Blockchain from './Core/Blockchain';
+import HttpServer from './Http/HttpServer';
+import Miner from './Miner/Miner';
+import Node from './Node/Node';
 import Operator from './Operator/Operator';
 
-import Wallet from './Wallet/Wallet';
-
-import HttpServer from './HTTP/HttpServer';
-import P2pServer from './P2P/P2pServer';
 
 
-BlockChain.getInstance();
-TransactionPool.getInstance();
+Blockchain.getInstance();
+HttpServer.getInstance().listen('127.0.0.1', 3001);
+Miner.getInstance();
+Node.getInstance();
 Operator.getInstance();
-
-Wallet.getInstance();
-
-HttpServer.getInstance();
-P2pServer.getInstance();
-
