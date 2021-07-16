@@ -19,9 +19,9 @@ export default class CryptoEdDSA {
     }
 
     static verifySignature = (publicKey, signature, messageHash) => {
-        let key = ec.keyFromPublic(publicKey, 'hex');
+        let key = ec.keyFromPublic(publicKey);
         let verified = key.verify(messageHash, signature);
-        console.log(`Verified: ${verified}`);
+
         return verified;
     }
 

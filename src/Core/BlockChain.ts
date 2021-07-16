@@ -1,296 +1,307 @@
-import {existsSync, readFileSync, unlinkSync, writeFileSync} from 'fs';
-import * as CryptoJS from 'crypto-js';
 import * as R from 'ramda';
+
+import * as Exceptions from '../Exceptions';
+import DB from '../DB';
 
 import * as Config from '../Config';
 import * as Utils from '../Utils';
-import Address from './Address';
-import Block from './Block';
-import {Transaction, UnspentTxOut} from './Transaction';
-import TransactionPool from './TransactionPool';
 
-import Wallet from '../Wallet/Wallet';
+import Block from "./Block";
+import { Transaction } from "./Transaction";
 
-import P2pServer from '../P2P/P2pServer';
+import Node from '../Node/Node';
 
-export default class BlockChain {
-    private static instance: BlockChain;
+export default class Blockchain {
+    private static instance: Blockchain;
 
-    private chain: Block[] = [];
-    private unspentTxOuts: UnspentTxOut[] = [];
+    public blocks: Block[] = [];
+    public transactions: Transaction[] = [];
+
+    private blocksDB: DB;
 
     private constructor() {
-        this.loadChain();
+        this.blocksDB = new DB('blocks');
+
+        // INFO: In this implementation the database is a file and every time data is saved it rewrites the file, probably it should be a more robust database for performance reasons
+        //this.blocks = this.blocksDb.read(Blocks);
+        //this.transactions = this.transactionsDb.read(Transactions);
+
+        this.init();
     }
 
-    public static getInstance = (): BlockChain => {
-        if (!BlockChain.instance) {
-            BlockChain.instance = new BlockChain();
+    public static getInstance = (): Blockchain => {
+        if (!Blockchain.instance) {
+            Blockchain.instance = new Blockchain();
         }
-        return BlockChain.instance;
+        return Blockchain.instance;
     }
 
-    public getBlockchain = (): Block[] => this.chain;
-
-    public getUnspentTxOuts = (): UnspentTxOut[] => R.clone(this.unspentTxOuts);
-
-    // and txPool should be only updated at the same time
-    public setUnspentTxOuts = (newUnspentTxOut: UnspentTxOut[]) => {
-        console.log('replacing unspentTxouts with: %s', newUnspentTxOut);
-        this.unspentTxOuts = newUnspentTxOut;
-    };
-
-    public getLatestBlock = (): Block => this.chain[this.chain.length - 1];
-
-    public getDifficulty = (aBlockchain: Block[]): number => {
-        const latestBlock: Block = aBlockchain[this.chain.length - 1];
-        if (latestBlock.index % Config.DIFFICULTY_ADJUSTMENT_INTERVAL === 0 && latestBlock.index !== 0) {
-            return this.getAdjustedDifficulty(latestBlock, aBlockchain);
-        } else {
-            return latestBlock.difficulty;
+    public init = () => {
+        // Create the genesis block if the blockchain is empty
+        if (this.blocks.length == 0) {
+            console.info('Blockchain empty, adding genesis block');
+            this.blocks.push(Block.genesis());
+            //this.blocksDb.write(this.blocks);
         }
-    };
 
-    public getAdjustedDifficulty = (latestBlock: Block, aBlockchain: Block[]) => {
-        const prevAdjustmentBlock: Block = aBlockchain[this.chain.length - Config.DIFFICULTY_ADJUSTMENT_INTERVAL];
-        const timeExpected: number = Config.BLOCK_GENERATION_INTERVAL * Config.DIFFICULTY_ADJUSTMENT_INTERVAL;
-        const timeTaken: number = latestBlock.timestamp - prevAdjustmentBlock.timestamp;
+        // Remove transactions that are in the blockchain
+        console.info('Removing transactions that are in the blockchain');
+        R.forEach(this.removeBlockTransactionsFromTransactions.bind(this), this.blocks);
+    }
 
-        if (timeTaken < timeExpected / 2) {
-            return prevAdjustmentBlock.difficulty + 1;
-        } else if (timeTaken > timeExpected * 2) {
-            return prevAdjustmentBlock.difficulty - 1;
-        } else {
-            return prevAdjustmentBlock.difficulty;
+    public getAllBlocks = (): Block[] => {
+        return this.blocks;
+    }
+
+    public getBlockByIndex = (index): Block => {
+        return R.find(R.propEq('index', index), this.blocks);
+    }
+
+    public getBlockByHash = (hash): Block => {
+        return R.find(R.propEq('hash', hash), this.blocks);
+    }
+
+    public getLastBlock = (): Block => {
+        return R.last(this.blocks);
+    }
+
+    public getDifficulty = (index?: number): number => {
+        index = index != undefined ? index : this.blocks.length;
+
+        // Calculates the difficulty based on the index since the difficulty value increases every X blocks
+        return Math.max(
+            Math.floor(Config.BASE_DIFFICULTY / Math.pow(Math.floor((index + 1) / Config.EVERY_X_BLOCKS) + 1, Config.POW_CURVE)), 
+            0
+        );
+    }
+
+    public getAllTransactions = (): Transaction[] => {
+        return this.transactions;
+    }
+
+    public getTransactionById = (id): Transaction => {
+        return R.find(R.propEq('id', id), this.transactions);
+    }
+
+    public getTransactionFromBlocks = (transactionId): Transaction => {
+        return R.find(R.compose(R.find(R.propEq('id', transactionId)), R.prop('transactions')), this.blocks);
+    }
+
+    public replaceChain = (newBlockchain) => {
+        // It doesn't make sense to replace this blockchain by a smaller one
+        if (newBlockchain.length <= this.blocks.length) {
+            console.error('Blockchain shorter than the current blockchain');
+            throw new Exceptions.BlockchainAssertionError('Blockchain shorter than the current blockchain');
         }
-    };
 
-    public generateNextBlock = () => {
-        const coinbaseTx: Transaction = Transaction.getRewardTransaction(Wallet.getInstance().getPublic(), this.getLatestBlock().index + 1);
-        const blockData: Transaction[] = [coinbaseTx].concat(TransactionPool.getInstance().getPool());
-        return this.generateRawNextBlock(blockData);
-    };
+        // Verify if the new blockchain is correct
+        this.checkChain(newBlockchain);
 
-    public generateRawNextBlock = (blockData: Transaction[]) => {
-        const previousBlock: Block = this.getLatestBlock();
-        const difficulty: number = this.getDifficulty(this.getBlockchain());
-        const nextIndex: number = previousBlock.index + 1;
-        const nextTimestamp: number = Utils.getCurrentTimestamp();
-        const newBlock: Block = this.findBlock(nextIndex, previousBlock.hash, nextTimestamp, blockData, difficulty);
+        // Get the blocks that diverges from our blockchain
+        console.info('Received blockchain is valid. Replacing current blockchain with received blockchain');
+        let newBlocks = R.takeLast(newBlockchain.length - this.blocks.length, newBlockchain);
 
-        if (this.addBlockToChain(newBlock)) {
-            P2pServer.getInstance().broadcastLatest();
+        // Add each new block to the blockchain
+        R.forEach((block) => {
+            this.addBlock(block, false);
+        }, newBlocks);
+
+        Node.getInstance().broadcast(Node.getInstance().sendLatestBlock, R.last(newBlocks));
+    }
+
+    public addBlock = (newBlock, emit = true): Block => {
+        // It only adds the block if it's valid (we need to compare to the previous one)
+        if (this.checkBlock(newBlock, this.getLastBlock())) {
+            this.blocks.push(newBlock);
+            //this.blocksDb.write(this.blocks);
+
+            // After adding the block it removes the transactions of this block from the list of pending transactions
+            this.removeBlockTransactionsFromTransactions(newBlock);
+
+            console.info(`Block added: ${newBlock.hash}`);
+            console.debug(`Block added: ${JSON.stringify(newBlock)}`);
+            if (emit) 
+                Node.getInstance().broadcast(Node.getInstance().sendLatestBlock, newBlock);
+
             return newBlock;
-        } else {
-            return null;
         }
-    };
+    }
 
-    public generatenextBlockWithTransaction = (receiverAddress: string, amount: number) => {
-        if (!Address.isValid(receiverAddress)) {
-            throw Error('invalid address');
+    public addTransaction = (newTransaction, emit = true): Transaction => {
+        // It only adds the transaction if it's valid
+        if (this.checkTransaction(newTransaction, this.blocks)) {
+            this.transactions.push(newTransaction);
+            //this.transactionsDb.write(this.transactions);
+
+            console.info(`Transaction added: ${newTransaction.id}`);
+            console.debug(`Transaction added: ${JSON.stringify(newTransaction)}`);
+            if (emit) 
+                Node.getInstance().broadcast(Node.getInstance().sendTransaction, newTransaction);
+
+            return newTransaction;
         }
-        if (typeof amount !== 'number') {
-            throw Error('invalid amount');
+    }
+
+    public removeBlockTransactionsFromTransactions = (newBlock) => {
+        this.transactions = R.reject((transaction) => { return R.find(R.propEq('id', transaction.id), newBlock.transactions); }, this.transactions);
+        //this.transactionsDb.write(this.transactions);
+    }
+
+    public checkChain = (blockchainToValidate) => {
+        // Check if the genesis block is the same
+        if (JSON.stringify(blockchainToValidate[0]) !== JSON.stringify(Block.genesis)) {
+            console.error('Genesis blocks aren\'t the same');
+            throw new Exceptions.BlockchainAssertionError('Genesis blocks aren\'t the same');
         }
-        const coinbaseTx: Transaction = Transaction.getRewardTransaction(Wallet.getInstance().getPublic(), this.getLatestBlock().index + 1);
-        const tx: Transaction = Wallet.getInstance().createTransaction(receiverAddress, amount, Wallet.getInstance().getPrivate(), this.getUnspentTxOuts(), TransactionPool.getInstance().getPool());
-        const blockData: Transaction[] = [coinbaseTx, tx];
-        return this.generateRawNextBlock(blockData);
-    };
 
-    // gets the unspent transaction outputs owned by the wallet
-    public getMyUnspentTransactionOutputs = () => {
-        return Wallet.getInstance().findUnspentTxOuts(Wallet.getInstance().getPublic(), this.getUnspentTxOuts());
-    };
-
-    public findBlock = (index: number, previousHash: string, timestamp: number, data: Transaction[], difficulty: number): Block => {
-        let nonce = 0;
-        while (true) {
-            const hash: string = this.calculateHash(index, previousHash, timestamp, data, difficulty, nonce);
-            if (this.hashMatchesDifficulty(hash, difficulty)) {
-                return new Block(index, hash, previousHash, timestamp, data, difficulty, nonce);
+        // Compare every block to the previous one (it skips the first one, because it was verified before)
+        try {
+            for (let i = 1; i < blockchainToValidate.length; i++) {
+                this.checkBlock(blockchainToValidate[i], blockchainToValidate[i - 1], blockchainToValidate);
             }
-            nonce++;
-        }
-    };
-
-    public calculateHashForBlock = (block: Block): string => {
-        return this.calculateHash(block.index, block.previousHash, block.timestamp, block.data, block.difficulty, block.nonce);
-    }
-        
-    public calculateHash = (index: number, previousHash: string, timestamp: number, data: Transaction[], difficulty: number, nonce: number): string => {
-        return CryptoJS.SHA256(index + previousHash + timestamp + data + difficulty + nonce).toString();
-    }
-
-    public hasValidHash = (block: Block): boolean => {
-
-        if (!this.hashMatchesBlockContent(block)) {
-            console.log('invalid hash, got:' + block.hash);
-            return false;
-        }
-    
-        if (!this.hashMatchesDifficulty(block.hash, block.difficulty)) {
-            console.log('block difficulty not satisfied. Expected: ' + block.difficulty + 'got: ' + block.hash);
+        } catch (ex) {
+            console.error('Invalid block sequence');
+            throw new Exceptions.BlockchainAssertionError('Invalid block sequence', null, ex);
         }
         return true;
-    };
-    
-    public hashMatchesBlockContent = (block: Block): boolean => {
-        const blockHash: string = this.calculateHashForBlock(block);
-        return blockHash === block.hash;
-    };
-    
-    public hashMatchesDifficulty = (hash: string, difficulty: number): boolean => {
-        const hashInBinary: string = Utils.hexToBinary(hash);
-        const requiredPrefix: string = '0'.repeat(difficulty);
-        return hashInBinary.startsWith(requiredPrefix);
-    };
+    }
 
-    public getAccumulatedDifficulty = (aBlockchain: Block[]): number => {
-        return aBlockchain
-            .map((block) => block.difficulty)
-            .map((difficulty) => Math.pow(2, difficulty))
-            .reduce((a, b) => a + b);
-    };
+    public checkBlock = (newBlock, previousBlock, referenceBlockchain = this.blocks) => {
+        const blockHash = newBlock.toHash();
 
-    //@TODO : Remove
-    public getAccountBalance = (): number => {
-        return Wallet.getInstance().getBalance(Wallet.getInstance().getPublic(), this.getUnspentTxOuts());
-    };
-    
-    public sendTransaction = (address: string, amount: number): Transaction => {
-        const tx: Transaction = Wallet.getInstance().createTransaction(address, amount, Wallet.getInstance().getPrivate(), this.getUnspentTxOuts(), TransactionPool.getInstance().getPool());
-        TransactionPool.getInstance().addToPool(tx, this.getUnspentTxOuts());
-        P2pServer.getInstance().broadCastTransactionPool();
-        return tx;
-    };
-
-    public isValidBlockStructure = (block: Block): boolean => {
-        return typeof block.index === 'number'
-            && typeof block.hash === 'string'
-            && typeof block.previousHash === 'string'
-            && typeof block.timestamp === 'number'
-            && typeof block.data === 'object';
-    };
-
-    public isValidNewBlock = (newBlock: Block, previousBlock: Block): boolean => {
-        if (!this.isValidBlockStructure(newBlock)) {
-            console.log('invalid block structure: %s', JSON.stringify(newBlock));
-            return false;
+        if (previousBlock.index + 1 !== newBlock.index) { // Check if the block is the last one
+            console.error(`Invalid index: expected '${previousBlock.index + 1}' got '${newBlock.index}'`);
+            throw new Exceptions.BlockAssertionError(`Invalid index: expected '${previousBlock.index + 1}' got '${newBlock.index}'`);
+        } else if (previousBlock.hash !== newBlock.previousHash) { // Check if the previous block is correct
+            console.error(`Invalid previoushash: expected '${previousBlock.hash}' got '${newBlock.previousHash}'`);
+            throw new Exceptions.BlockAssertionError(`Invalid previoushash: expected '${previousBlock.hash}' got '${newBlock.previousHash}'`);
+        } else if (blockHash !== newBlock.hash) { // Check if the hash is correct
+            console.error(`Invalid hash: expected '${blockHash}' got '${newBlock.hash}'`);
+            throw new Exceptions.BlockAssertionError(`Invalid hash: expected '${blockHash}' got '${newBlock.hash}'`);
+        } else if (newBlock.getDifficulty() >= this.getDifficulty(newBlock.index)) { // If the difficulty level of the proof-of-work challenge is correct
+            console.error(`Invalid proof-of-work difficulty: expected '${newBlock.getDifficulty()}' to be smaller than '${this.getDifficulty(newBlock.index)}'`);
+            throw new Exceptions.BlockAssertionError(`Invalid proof-of-work difficulty: expected '${newBlock.getDifficulty()}' be smaller than '${this.getDifficulty(newBlock.index)}'`);
         }
-        if (previousBlock.index + 1 !== newBlock.index) {
-            console.log('invalid index');
-            return false;
-        } else if (previousBlock.hash !== newBlock.previousHash) {
-            console.log('invalid previoushash');
-            return false;
-        } else if (!Utils.isValidTimestamp(newBlock, previousBlock)) {
-            console.log('invalid timestamp');
-            return false;
-        } else if (!this.hasValidHash(newBlock)) {
-            return false;
+
+        // INFO: Here it would need to check if the block follows some expectation regarging the minimal number of transactions, value or data size to avoid empty blocks being mined.
+
+        // For each transaction in this block, check if it is valid
+        R.forEach(this.checkTransaction.bind(this), newBlock.transactions, referenceBlockchain);
+
+        // Check if the sum of output transactions are equal the sum of input transactions + BLOCK_REWARD (representing the reward for the block miner)
+        let sumOfInputsAmount = R.sum(R.flatten(R.map(R.compose(R.map(R.prop('amount')), R.prop('inputs'), R.prop('data')), newBlock.transactions))) + Config.BLOCK_REWARD;
+        let sumOfOutputsAmount = R.sum(R.flatten(R.map(R.compose(R.map(R.prop('amount')), R.prop('outputs'), R.prop('data')), newBlock.transactions)));
+
+        let isInputsAmountGreaterOrEqualThanOutputsAmount = R.gte(sumOfInputsAmount, sumOfOutputsAmount);
+
+        if (!isInputsAmountGreaterOrEqualThanOutputsAmount) {
+            console.error(`Invalid block balance: inputs sum '${sumOfInputsAmount}', outputs sum '${sumOfOutputsAmount}'`);
+            throw new Exceptions.BlockAssertionError(`Invalid block balance: inputs sum '${sumOfInputsAmount}', outputs sum '${sumOfOutputsAmount}'`, { sumOfInputsAmount, sumOfOutputsAmount });
         }
+
+        // Check if there is double spending
+        let listOfTransactionIndexInputs = R.flatten(R.map(R.compose(R.map(R.compose(R.join('|'), R.props(['transaction', 'index']))), R.prop('inputs'), R.prop('data')), newBlock.transactions));
+        let doubleSpendingList = R.filter((x) => x >= 2, R.map(R.length, R.groupBy(x => x)(listOfTransactionIndexInputs)));
+
+        if (R.keys(doubleSpendingList).length) {
+            console.error(`There are unspent output transactions being used more than once: unspent output transaction: '${R.keys(doubleSpendingList).join(', ')}'`);
+            throw new Exceptions.BlockAssertionError(`There are unspent output transactions being used more than once: unspent output transaction: '${R.keys(doubleSpendingList).join(', ')}'`);
+        }
+
+        // Check if there is only 1 fee transaction and 1 reward transaction;
+        let transactionsByType = R.countBy(R.prop('type'), newBlock.transactions);
+        if (transactionsByType.fee && transactionsByType.fee > 1) {
+            console.error(`Invalid fee transaction count: expected '1' got '${transactionsByType.fee}'`);
+            throw new Exceptions.BlockAssertionError(`Invalid fee transaction count: expected '1' got '${transactionsByType.fee}'`);
+        }
+
+        if (transactionsByType.reward && transactionsByType.reward > 1) {
+            console.error(`Invalid reward transaction count: expected '1' got '${transactionsByType.reward}'`);
+            throw new Exceptions.BlockAssertionError(`Invalid reward transaction count: expected '1' got '${transactionsByType.reward}'`);
+        }
+
         return true;
-    };
+    }
 
-    /*
-    Checks if the given blockchain is valid. Return the unspent txOuts if the chain is valid
-    */
-    public isValidChain = (blockchainToValidate: Block[]): UnspentTxOut[] => {
-        console.log('isValidChain:');
-        console.log(JSON.stringify(blockchainToValidate));
-        const isValidGenesis = (block: Block): boolean => {
-            return JSON.stringify(block) === JSON.stringify(Config.genesisBlock);
+    public checkTransaction = (transaction, referenceBlockchain = this.blocks) => {
+
+        // Check the transaction
+        transaction.check(transaction);
+
+        // Verify if the transaction isn't already in the blockchain
+        let isNotInBlockchain = R.all((block) => {
+            return R.none(R.propEq('id', transaction.id), block.transactions);
+        }, referenceBlockchain);
+
+        if (!isNotInBlockchain) {
+            console.error(`Transaction '${transaction.id}' is already in the blockchain`);
+            throw new Exceptions.TransactionAssertionError(`Transaction '${transaction.id}' is already in the blockchain`, transaction);
+        }
+
+        // Verify if all input transactions are unspent in the blockchain
+        let isInputTransactionsUnspent = R.all(R.equals(false), R.flatten(R.map((txInput) => {
+            return R.map(
+                R.pipe(
+                    R.prop('transactions'),
+                    R.map(R.pipe(
+                        R.path(['data', 'inputs']),
+                        R.contains({ transaction: txInput.transaction, index: txInput.index })
+                    ))
+                ), referenceBlockchain);
+        }, transaction.data.inputs)));
+
+        if (!isInputTransactionsUnspent) {
+            console.error(`Not all inputs are unspent for transaction '${transaction.id}'`);
+            throw new Exceptions.TransactionAssertionError(`Not all inputs are unspent for transaction '${transaction.id}'`, transaction.data.inputs);
+        }
+
+        return true;
+    }
+
+    public getUnspentTransactionsForAddress = (address) => {
+        const selectTxs = (transaction) => {
+            let index = 0;
+            // Create a list of all transactions outputs found for an address (or all).
+            R.forEach((txOutput) => {
+                if (address && txOutput.address == address) {
+                    txOutputs.push({
+                        transaction: transaction.id,
+                        index: index,
+                        amount: txOutput.amount,
+                        address: txOutput.address
+                    });
+                }
+                index++;
+            }, transaction.data.outputs);
+
+            // Create a list of all transactions inputs found for an address (or all).            
+            R.forEach((txInput) => {
+                if (address && txInput.address != address) return;
+
+                txInputs.push({
+                    transaction: txInput.transaction,
+                    index: txInput.index,
+                    amount: txInput.amount,
+                    address: txInput.address
+                });
+            }, transaction.data.inputs);
         };
 
-        if (!isValidGenesis(blockchainToValidate[0])) {
-            return null;
-        }
-        /*
-        Validate each block in the chain. The block is valid if the block structure is valid
-        and the transaction are valid
-        */
-        let aUnspentTxOuts: UnspentTxOut[] = [];
+        // Considers both transactions in block and unconfirmed transactions (enabling transaction chain)
+        let txOutputs = [];
+        let txInputs = [];
+        R.forEach(R.pipe(R.prop('transactions'), R.forEach(selectTxs)), this.blocks);
+        R.forEach(selectTxs, this.transactions);
 
-        for (let i = 0; i < blockchainToValidate.length; i++) {
-            const currentBlock: Block = blockchainToValidate[i];
-            if (i !== 0 && !this.isValidNewBlock(blockchainToValidate[i], blockchainToValidate[i - 1])) {
-                return null;
+        // Cross both lists and find transactions outputs without a corresponding transaction input
+        let unspentTransactionOutput = [];
+        R.forEach((txOutput) => {
+            if (!R.any((txInput) => txInput.transaction == txOutput.transaction && txInput.index == txOutput.index, txInputs)) {
+                unspentTransactionOutput.push(txOutput);
             }
+        }, txOutputs);
 
-            aUnspentTxOuts = Transaction.processTransactions(currentBlock.data, aUnspentTxOuts, currentBlock.index);
-            if (aUnspentTxOuts === null) {
-                console.log('invalid transactions in blockchain');
-                return null;
-            }
-        }
-        return aUnspentTxOuts;
-    };
-
-    public addBlockToChain = (newBlock: Block): boolean => {
-        if (newBlock == Config.genesisBlock || this.isValidNewBlock(newBlock, this.getLatestBlock())) {
-            const retVal: UnspentTxOut[] = Transaction.processTransactions(newBlock.data, this.getUnspentTxOuts(), newBlock.index);
-            if (retVal === null) {
-                console.log('block is not valid in terms of transactions');
-                return false;
-            } else {
-                this.chain.push(newBlock);
-                this.setUnspentTxOuts(retVal);
-                TransactionPool.getInstance().updatePool(this.unspentTxOuts);
-
-                writeFileSync(Config.CHAIN_LOCATION + newBlock.index + '.block', JSON.stringify(newBlock));
-                writeFileSync(Config.CHAIN_LOCATION + 'chain.idx', newBlock.index.toString());
-
-                return true;
-            }
-        }
-        return false;
-    };
-
-    public replaceChain = (newBlocks: Block[]) => {
-        const aUnspentTxOuts = this.isValidChain(newBlocks);
-        const validChain: boolean = aUnspentTxOuts !== null;
-        if (validChain && this.getAccumulatedDifficulty(newBlocks) > this.getAccumulatedDifficulty(this.getBlockchain())) {
-            console.log('Received blockchain is valid. Replacing current blockchain with received blockchain');
-            this.chain = newBlocks;
-            this.setUnspentTxOuts(aUnspentTxOuts);
-            TransactionPool.getInstance().updatePool(this.unspentTxOuts);
-            P2pServer.getInstance().broadcastLatest();
-            this.saveChain();
-        } else {
-            console.log('Received blockchain invalid');
-        }
-    };
-
-    public handleReceivedTransaction = (transaction: Transaction) => {
-        TransactionPool.getInstance().addToPool(transaction, this.getUnspentTxOuts());
-    };
-
-    public loadChain = () => {
-        if (!existsSync(Config.CHAIN_LOCATION + 'chain.idx')) {
-            this.chain = [Config.genesisBlock];
-            this.unspentTxOuts = Transaction.processTransactions(this.chain[0].data, [], 0); // the unspent txOut of genesis block is set to unspentTxOuts on startup
-
-            writeFileSync(Config.CHAIN_LOCATION + '0.block', JSON.stringify(Config.genesisBlock));
-            writeFileSync(Config.CHAIN_LOCATION + 'chain.idx', '0');
-            return;
-        }
-
-        const blockIndex = Number.parseInt(readFileSync(Config.CHAIN_LOCATION + 'chain.idx', 'utf8').toString());
-        for (let i = 0; i <= blockIndex; i++)
-        {
-            this.chain.push(
-                Utils.JSONToObject<Block>(readFileSync(Config.CHAIN_LOCATION + i + '.block', 'utf8').toString())
-            );
-        }
-    }
-
-    public saveChain = () => {
-        writeFileSync(Config.CHAIN_LOCATION + 'chain.idx', this.chain.length.toString());            
-        this.chain.forEach((block) => {
-            writeFileSync(Config.CHAIN_LOCATION + block.index + '.block', JSON.stringify(block));
-        }); 
+        return unspentTransactionOutput;
     }
 
 }
