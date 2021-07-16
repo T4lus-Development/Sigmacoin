@@ -4,7 +4,7 @@
     "target": "es6",
     "lib": ["es6", "es7"],
     "sourceMap": false,
-    "outDir": "bin/build"
+    "outDir": "bin/"
   },
   "include": [
     "src/*"

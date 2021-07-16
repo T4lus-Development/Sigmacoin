@@ -1,4 +1,6 @@
 node_modules
+bin
+
 .nyc_output
 coverage
 .idea
@@ -7,4 +9,3 @@ yarn.lock
 .vscode
 data
 
-bin/build

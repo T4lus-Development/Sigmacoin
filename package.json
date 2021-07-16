@@ -1,19 +1,19 @@
 {
   "name": "sigmacoin",
-  "version": "0.0.2",
-  "description": "",
+  "version": "0.2.0",
+  "description": "Sigmacoin, a cryptocurrency demonstration",
   "homepage": "",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": ""
+    "url": "https://github.com/T4lus-Development/Sigmacoin.git"
   },
   "bin": {
-    "naivecoin": "bin/sigmacoin.js"
+    "naivecoin": "bin/Sigmacoin.js"
   },
   "scripts": {
     "prestart": "npm run build",
-    "start": "node bin/sigmacoin.js",
+    "start": "node bin/Sigmacoin.js",
     "build": "tsc",
     "compose:up": "docker-compose up",
     "test": "_mocha -u bdd --colors test/"
